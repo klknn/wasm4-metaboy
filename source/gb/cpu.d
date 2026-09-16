@@ -3,13 +3,45 @@ module gb.cpu;
 import gb.types;
 import gb.mmu;
 
+import std.bitmanip : bitfields;
+
 struct CPU {
-    // 8-bit & 16-bit registers (little-endian layout on WASM/x86)
     u8 a = 0x01;
-    u8 f = 0xB0;
-    union { u16 bc = 0x0013; struct { u8 c; u8 b; } }
-    union { u16 de = 0x00D8; struct { u8 e; u8 d; } }
-    union { u16 hl = 0x014D; struct { u8 l; u8 h; } }
+
+    // Register F with bitfields
+    union {
+        u8 f = 0xB0;
+        mixin(bitfields!(
+            uint, "_padF", 4,
+            bool, "flagC", 1,
+            bool, "flagH", 1,
+            bool, "flagN", 1,
+            bool, "flagZ", 1
+        ));
+    }
+
+    // 16-bit register pairs using 8-bit bitfields
+    union {
+        u16 bc = 0x0013;
+        mixin(bitfields!(
+            u8, "c", 8,
+            u8, "b", 8
+        ));
+    }
+    union {
+        u16 de = 0x00D8;
+        mixin(bitfields!(
+            u8, "e", 8,
+            u8, "d", 8
+        ));
+    }
+    union {
+        u16 hl = 0x014D;
+        mixin(bitfields!(
+            u8, "l", 8,
+            u8, "h", 8
+        ));
+    }
 
     u16 sp = 0xFFFE;
     u16 pc = 0x0100;
@@ -21,19 +53,6 @@ struct CPU {
     // AF accessor (lower 4 bits of F are always zero)
     @property u16 af() const { return cast(u16)((a << 8) | (f & 0xF0)); }
     @property void af(u16 v) { a = cast(u8)(v >> 8); f = cast(u8)(v & 0xF0); }
-
-    // Flag getters & setters
-    @property bool flagZ() const { return (f & FLAG_Z) != 0; }
-    @property void flagZ(bool v) { if (v) f |= FLAG_Z; else f &= ~FLAG_Z; }
-
-    @property bool flagN() const { return (f & FLAG_N) != 0; }
-    @property void flagN(bool v) { if (v) f |= FLAG_N; else f &= ~FLAG_N; }
-
-    @property bool flagH() const { return (f & FLAG_H) != 0; }
-    @property void flagH(bool v) { if (v) f |= FLAG_H; else f &= ~FLAG_H; }
-
-    @property bool flagC() const { return (f & FLAG_C) != 0; }
-    @property void flagC(bool v) { if (v) f |= FLAG_C; else f &= ~FLAG_C; }
 
     void reset() {
         a = 0x01;

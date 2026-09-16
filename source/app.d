@@ -19,7 +19,7 @@ extern(C) void start() {
 }
 
 extern(C) void update() {
-    gameboy.stepFrame(*w4.gamepad1);
+    gameboy.stepFrame(*w4.gamepad1, *w4.gamepad2, *w4.mouseButtons);
 
     // Bottom debug status bar (lines 144..159)
     *w4.drawColors = 0x03;
@@ -30,6 +30,17 @@ extern(C) void update() {
     formatHex16(status.ptr + 3, gameboy.cpu.pc);
     formatHex16(status.ptr + 11, gameboy.cpu.sp);
     w4.text(status.ptr, 4, 148);
+}
+
+extern(C) ubyte* getRomBuffer(size_t size) {
+    return cast(ubyte*)0x10000;
+}
+
+extern(C) void loadRom(size_t size) {
+    ubyte* romPtr = cast(ubyte*)0x10000;
+    ubyte* ramPtr = cast(ubyte*)0x90000;
+    gameboy.loadCustomRom(romPtr[0 .. size], ramPtr[0 .. 32768]);
+    w4.trace("Custom Game Boy ROM loaded!\0".ptr);
 }
 
 private void formatHex16(char* dest, u16 val) {

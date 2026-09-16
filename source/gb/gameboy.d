@@ -18,24 +18,32 @@ struct GameBoy {
         totalFrames = 0;
     }
 
-    void loadCustomRom(const(u8)[] rom) {
+    void loadCustomRom(const(u8)[] rom, u8[] ram = null) {
         cpu.reset();
         mmu.reset();
         mmu.setRom(rom);
+        if (ram !is null) {
+            mmu.setCartRam(ram);
+        }
         totalFrames = 0;
     }
 
-    void stepFrame(ubyte gamepad) {
-        // Map WASM-4 gamepad to Game Boy buttons
+    void stepFrame(ubyte gp1, ubyte gp2 = 0, ubyte mouse = 0) {
+        bool btnA      = (gp1 & w4.button1) != 0;
+        bool btnB      = (gp1 & w4.button2) != 0;
+        bool btnSelect = (gp2 & w4.button1) != 0 || (mouse & w4.mouseRight) != 0;
+        bool btnStart  = (gp2 & w4.button2) != 0 || (mouse & w4.mouseLeft) != 0 ||
+                         ((gp1 & (w4.button1 | w4.button2)) == (w4.button1 | w4.button2));
+
         mmu.updateInput(
-            (gamepad & w4.buttonRight) != 0,
-            (gamepad & w4.buttonLeft)  != 0,
-            (gamepad & w4.buttonUp)    != 0,
-            (gamepad & w4.buttonDown)  != 0,
-            (gamepad & w4.button1)     != 0,
-            (gamepad & w4.button2)     != 0,
-            false, // Select
-            false  // Start
+            (gp1 & w4.buttonRight) != 0,
+            (gp1 & w4.buttonLeft)  != 0,
+            (gp1 & w4.buttonUp)    != 0,
+            (gp1 & w4.buttonDown)  != 0,
+            btnA,
+            btnB,
+            btnSelect,
+            btnStart
         );
 
         // Run 1 frame = 70,224 T-cycles
@@ -104,6 +112,30 @@ unittest {
         if (fb[i] != 0) { hasPixels = true; break; }
     }
     assert(hasPixels, "Framebuffer should contain non-zero rendered pixels");
+
+    // Pokemon Red verification if ROM is present locally
+    import std.file : exists, read;
+    if (exists("pokemon_red.gb")) {
+        const(ubyte)[] pokeRom = cast(const(ubyte)[])read("pokemon_red.gb");
+        assert(pokeRom.length == 524288, "Pokemon Red should be 512KB");
+
+        GameBoy pokeGb;
+        ubyte[32768] pokeRam;
+        pokeGb.loadCustomRom(pokeRom, pokeRam[]);
+
+        assert(pokeGb.mmu.cartType == 0x03, "Cart type should be MBC1+RAM+BATTERY");
+        assert(pokeGb.mmu.numRomBanks == 32, "Pokemon Red should have 32 ROM banks");
+        assert(pokeGb.mmu.numRamBanks == 4, "Pokemon Red should have 4 RAM banks");
+
+        // Run 180 frames (approx 3 seconds of in-game time)
+        for (int f = 0; f < 180; f++) {
+            pokeGb.stepFrame(0);
+        }
+
+        assert(pokeGb.totalFrames == 180);
+        assert((pokeGb.mmu.ppu.lcdc & 0x80) != 0, "LCD should be enabled by Pokemon Red");
+        assert(pokeGb.cpu.pc >= 0x0100 && pokeGb.cpu.pc < 0x8000, "PC in valid ROM address range");
+    }
 
     import core.stdc.stdio : printf;
     printf("✔ [GameBoy] Integration unittests passed.\n");

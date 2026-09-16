@@ -9,6 +9,18 @@ struct MMU {
     const(u8)* romData = null;
     size_t     romSize = 0;
 
+    u8*        cartRam = null;
+    size_t     cartRamSize = 0;
+
+    // MBC1 Registers
+    u8   cartType = 0;
+    u8   romBank5 = 1;       // 5-bit ROM bank register (1..31)
+    u8   ramBank = 0;        // 2-bit RAM bank / upper ROM bank register (0..3)
+    u8   bankingMode = 0;    // 0: ROM banking mode, 1: RAM banking mode
+    bool ramEnabled = false;
+    uint numRomBanks = 2;
+    uint numRamBanks = 0;
+
     u8[8192] wram;      // 0xC000 - 0xDFFF (Work RAM)
     u8[128]  hram;      // 0xFF80 - 0xFFFE (High RAM)
 
@@ -39,11 +51,43 @@ struct MMU {
         sc = 0x7E;
         ppu.reset();
         timer.reset();
+        resetCart();
     }
 
     void setRom(const(u8)[] rom) {
         romData = rom.ptr;
         romSize = rom.length;
+        resetCart();
+    }
+
+    void setCartRam(u8[] ram) {
+        cartRam = ram.ptr;
+        cartRamSize = ram.length;
+    }
+
+    void resetCart() {
+        if (romData !is null && romSize >= 0x150) {
+            cartType = romData[0x0147];
+            u8 romCode = romData[0x0148];
+            numRomBanks = (romCode <= 0x08) ? (2 << romCode) : 2;
+            u8 ramCode = romData[0x0149];
+            switch (ramCode) {
+                case 1: numRamBanks = 1; break; // 2KB
+                case 2: numRamBanks = 1; break; // 8KB
+                case 3: numRamBanks = 4; break; // 32KB (Pokemon Red)
+                case 4: numRamBanks = 16; break; // 128KB
+                case 5: numRamBanks = 8; break; // 64KB
+                default: numRamBanks = 0; break;
+            }
+        } else {
+            cartType = 0;
+            numRomBanks = 2;
+            numRamBanks = 0;
+        }
+        romBank5 = 1;
+        ramBank = 0;
+        bankingMode = 0;
+        ramEnabled = false;
     }
 
     void updateInput(bool right, bool left, bool up, bool down, bool a, bool b, bool select, bool start) {
@@ -63,12 +107,30 @@ struct MMU {
     }
 
     u8 read(u16 addr) const {
-        if (addr < 0x8000) { // Cartridge ROM
-            return (romData !is null && addr < romSize) ? romData[addr] : 0xFF;
+        if (addr < 0x4000) { // ROM Bank 00
+            if (romData is null || romSize == 0) return 0xFF;
+            size_t bank = 0;
+            if (bankingMode == 1 && (cartType >= 1 && cartType <= 3)) {
+                bank = ((ramBank << 5) & (numRomBanks - 1));
+            }
+            size_t offset = bank * 16384 + addr;
+            return offset < romSize ? romData[offset] : 0xFF;
+        } else if (addr < 0x8000) { // Switchable ROM Bank 01..31
+            if (romData is null || romSize == 0) return 0xFF;
+            size_t bank = 1;
+            if (cartType >= 1 && cartType <= 3) { // MBC1
+                size_t rawBank = ((ramBank & 3) << 5) | (romBank5 == 0 ? 1 : romBank5);
+                bank = rawBank & (numRomBanks - 1);
+            }
+            size_t offset = bank * 16384 + (addr - 0x4000);
+            return offset < romSize ? romData[offset] : 0xFF;
         } else if (addr < 0xA000) { // VRAM
             return ppu.read(addr);
-        } else if (addr < 0xC000) { // External RAM
-            return 0xFF;
+        } else if (addr < 0xC000) { // External Cartridge RAM
+            if (!ramEnabled || cartRam is null || numRamBanks == 0) return 0xFF;
+            size_t bank = (bankingMode == 1) ? (ramBank & (numRamBanks - 1)) : 0;
+            size_t offset = bank * 8192 + (addr - 0xA000);
+            return offset < cartRamSize ? cartRam[offset] : 0xFF;
         } else if (addr < 0xE000) { // WRAM
             return wram[addr - 0xC000];
         } else if (addr < 0xFE00) { // Echo RAM
@@ -101,12 +163,33 @@ struct MMU {
     }
 
     void write(u16 addr, u8 val) {
-        if (addr < 0x8000) {
-            return; // ROM is read-only
+        if (addr < 0x2000) { // 0x0000 - 0x1FFF: RAM Enable
+            if (cartType >= 1 && cartType <= 3) {
+                ramEnabled = ((val & 0x0F) == 0x0A);
+            }
+        } else if (addr < 0x4000) { // 0x2000 - 0x3FFF: ROM Bank Number
+            if (cartType >= 1 && cartType <= 3) {
+                u8 b = val & 0x1F;
+                romBank5 = (b == 0) ? 1 : b;
+            }
+        } else if (addr < 0x6000) { // 0x4000 - 0x5FFF: RAM Bank / Upper ROM Bank
+            if (cartType >= 1 && cartType <= 3) {
+                ramBank = val & 0x03;
+            }
+        } else if (addr < 0x8000) { // 0x6000 - 0x7FFF: Banking Mode Select
+            if (cartType >= 1 && cartType <= 3) {
+                bankingMode = val & 0x01;
+            }
         } else if (addr < 0xA000) {
             ppu.write(addr, val);
-        } else if (addr < 0xC000) {
-            return;
+        } else if (addr < 0xC000) { // External Cartridge RAM
+            if (ramEnabled && cartRam !is null && numRamBanks > 0) {
+                size_t bank = (bankingMode == 1) ? (ramBank & (numRamBanks - 1)) : 0;
+                size_t offset = bank * 8192 + (addr - 0xA000);
+                if (offset < cartRamSize) {
+                    cartRam[offset] = val;
+                }
+            }
         } else if (addr < 0xE000) {
             wram[addr - 0xC000] = val;
         } else if (addr < 0xFE00) {
@@ -121,9 +204,11 @@ struct MMU {
             sb = val;
         } else if (addr == 0xFF02) {
             sc = val;
-            if (val == 0x81) { // Debug serial output
-                char[2] buf = [cast(char)sb, '\0'];
-                w4.trace(buf.ptr);
+            if (val & 0x80) { // Serial transfer requested
+                if (sb >= 32 && sb < 127) {
+                    char[2] buf = [cast(char)sb, '\0'];
+                    w4.trace(buf.ptr);
+                }
                 sc &= 0x7F;
                 iflag |= INT_SERIAL;
             }
@@ -173,6 +258,57 @@ unittest {
     for (u16 i = 0; i < 160; i++) {
         assert(mmu.ppu.oam[i] == cast(u8)(i + 1));
     }
+
+    // MBC1 Banking Unittest with synthetic 64KB ROM (4 banks) + 32KB RAM (4 banks)
+    u8[65536] testRom;
+    testRom[0x0147] = 0x03; // MBC1 + RAM + BATTERY
+    testRom[0x0148] = 0x01; // 4 ROM banks
+    testRom[0x0149] = 0x03; // 4 RAM banks
+    // Tag each bank with distinctive marker at byte 0
+    testRom[0 * 16384] = 0x10; // Bank 0
+    testRom[1 * 16384] = 0x21; // Bank 1
+    testRom[2 * 16384] = 0x32; // Bank 2
+    testRom[3 * 16384] = 0x43; // Bank 3
+
+    u8[32768] testRam;
+    mmu.setRom(testRom[]);
+    mmu.setCartRam(testRam[]);
+
+    // Default: Bank 0 at 0x0000, Bank 1 at 0x4000
+    assert(mmu.read(0x0000) == 0x10);
+    assert(mmu.read(0x4000) == 0x21);
+
+    // Switch to Bank 2 via 0x2000
+    mmu.write(0x2000, 0x02);
+    assert(mmu.read(0x4000) == 0x32);
+
+    // Switch to Bank 3
+    mmu.write(0x2000, 0x03);
+    assert(mmu.read(0x4000) == 0x43);
+
+    // Bank 0 write translates to Bank 1
+    mmu.write(0x2000, 0x00);
+    assert(mmu.read(0x4000) == 0x21);
+
+    // RAM disabled by default
+    assert(mmu.read(0xA000) == 0xFF);
+    mmu.write(0xA000, 0x77);
+    assert(mmu.read(0xA000) == 0xFF);
+
+    // Enable RAM with 0x0A
+    mmu.write(0x0000, 0x0A);
+    mmu.write(0xA000, 0x77);
+    assert(mmu.read(0xA000) == 0x77);
+
+    // Switch RAM bank in mode 1
+    mmu.write(0x6000, 0x01); // Mode 1
+    mmu.write(0x4000, 0x01); // RAM bank 1
+    mmu.write(0xA000, 0x88);
+    assert(mmu.read(0xA000) == 0x88);
+
+    // Switch back to RAM bank 0
+    mmu.write(0x4000, 0x00);
+    assert(mmu.read(0xA000) == 0x77);
 
     import core.stdc.stdio : printf;
     printf("✔ [MMU] Unittests passed.\n");

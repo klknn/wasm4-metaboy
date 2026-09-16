@@ -13,10 +13,12 @@
         "--stack-first",
         "--import-memory",
         "--initial-memory=65536",
-        "--max-memory=65536",
+        "--max-memory=2097152",
         "--no-entry",
         "--export=start",
         "--export=update",
+        "--export=getRomBuffer",
+        "--export=loadRom",
         "-zstack-size=14752"
       ]
     },
