@@ -44,18 +44,18 @@ version (WebAssembly) {
     __gshared ubyte mockNetplay;
     __gshared ubyte[6400] mockFramebuffer;
 
-    @property auto palette() { return mockPalette.ptr; }
-    @property auto drawColors() { return &mockDrawColors; }
-    @property auto gamepad1() { return cast(const ubyte*)&mockGamepad1; }
-    @property auto gamepad2() { return cast(const ubyte*)&mockGamepad2; }
-    @property auto gamepad3() { return cast(const ubyte*)&mockGamepad3; }
-    @property auto gamepad4() { return cast(const ubyte*)&mockGamepad4; }
-    @property auto mouseX() { return cast(const short*)&mockMouseX; }
-    @property auto mouseY() { return cast(const short*)&mockMouseY; }
-    @property auto mouseButtons() { return cast(const ubyte*)&mockMouseButtons; }
-    @property auto systemFlags() { return &mockSystemFlags; }
-    @property auto netplay() { return cast(const ubyte*)&mockNetplay; }
-    @property auto framebuffer() { return mockFramebuffer.ptr; }
+    enum palette = mockPalette.ptr;
+    enum drawColors = &mockDrawColors;
+    enum gamepad1 = cast(const ubyte*)&mockGamepad1;
+    enum gamepad2 = cast(const ubyte*)&mockGamepad2;
+    enum gamepad3 = cast(const ubyte*)&mockGamepad3;
+    enum gamepad4 = cast(const ubyte*)&mockGamepad4;
+    enum mouseX = cast(const short*)&mockMouseX;
+    enum mouseY = cast(const short*)&mockMouseY;
+    enum mouseButtons = cast(const ubyte*)&mockMouseButtons;
+    enum systemFlags = &mockSystemFlags;
+    enum netplay = cast(const ubyte*)&mockNetplay;
+    enum framebuffer = mockFramebuffer.ptr;
 }
 
 enum button1 = 1;

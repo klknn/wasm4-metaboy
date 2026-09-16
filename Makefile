@@ -13,7 +13,7 @@ run: build
 	w4 run cart.wasm
 
 test:
-	ldc2 -I=source source/gb/types.d source/gb/timer.d source/gb/ppu.d source/gb/mmu.d source/gb/cpu.d source/gb/rom.d source/gb/gameboy.d source/wasm4.d tests/test_emulator.d -of=tests/test_emulator && ./tests/test_emulator
+	ldc2 -i -I=source -unittest -main -run source/gb/gameboy.d
 
 clean:
-	rm -rf cart.wasm .dub tests/test_emulator tests/*.o screenshot.ppm
+	rm -rf cart.wasm .dub screenshot.ppm

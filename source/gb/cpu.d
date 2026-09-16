@@ -4,15 +4,12 @@ import gb.types;
 import gb.mmu;
 
 struct CPU {
-    // 8-bit registers
+    // 8-bit & 16-bit registers (little-endian layout on WASM/x86)
     u8 a = 0x01;
     u8 f = 0xB0;
-    u8 b = 0x00;
-    u8 c = 0x13;
-    u8 d = 0x00;
-    u8 e = 0xD8;
-    u8 h = 0x01;
-    u8 l = 0x4D;
+    union { u16 bc = 0x0013; struct { u8 c; u8 b; } }
+    union { u16 de = 0x00D8; struct { u8 e; u8 d; } }
+    union { u16 hl = 0x014D; struct { u8 l; u8 h; } }
 
     u16 sp = 0xFFFE;
     u16 pc = 0x0100;
@@ -21,25 +18,9 @@ struct CPU {
     bool imeScheduled = false; // Delayed EI
     bool halted = false;
 
-    // 16-bit register accessors
+    // AF accessor (lower 4 bits of F are always zero)
     @property u16 af() const { return cast(u16)((a << 8) | (f & 0xF0)); }
     @property void af(u16 v) { a = cast(u8)(v >> 8); f = cast(u8)(v & 0xF0); }
-
-    @property u16 bc() const { return cast(u16)((b << 8) | c); }
-    @property void bc(u16 v) { b = cast(u8)(v >> 8); c = cast(u8)(v & 0xFF); }
-
-    @property u16 de() const { return cast(u16)((d << 8) | e); }
-    @property void de(u16 v) { d = cast(u8)(v >> 8); e = cast(u8)(v & 0xFF); }
-
-    @property u16 hl() const { return cast(u16)((h << 8) | l); }
-    @property void hl(u16 v) { h = cast(u8)(v >> 8); l = cast(u8)(v & 0xFF); }
-
-    void incBC() { bc = cast(u16)(bc + 1); }
-    void decBC() { bc = cast(u16)(bc - 1); }
-    void incDE() { de = cast(u16)(de + 1); }
-    void decDE() { de = cast(u16)(de - 1); }
-    void incHL() { hl = cast(u16)(hl + 1); }
-    void decHL() { hl = cast(u16)(hl - 1); }
 
     // Flag getters & setters
     @property bool flagZ() const { return (f & FLAG_Z) != 0; }
@@ -57,12 +38,9 @@ struct CPU {
     void reset() {
         a = 0x01;
         f = 0xB0;
-        b = 0x00;
-        c = 0x13;
-        d = 0x00;
-        e = 0xD8;
-        h = 0x01;
-        l = 0x4D;
+        bc = 0x0013;
+        de = 0x00D8;
+        hl = 0x014D;
         sp = 0xFFFE;
         pc = 0x0100;
         ime = false;
@@ -70,46 +48,33 @@ struct CPU {
         halted = false;
     }
 
-    // Step CPU by executing one instruction or servicing interrupts.
-    // Returns the number of T-cycles consumed.
+    // Step CPU by executing one instruction or servicing an interrupt.
     uint step(ref MMU mmu) {
-        // Handle delayed EI
         if (imeScheduled) {
             ime = true;
             imeScheduled = false;
         }
 
-        // Check and handle interrupts
+        // Check pending interrupts
         u8 pending = mmu.iflag & mmu.ie & 0x1F;
         if (pending != 0) {
-            if (halted) {
-                halted = false;
-            }
-
+            halted = false;
             if (ime) {
                 ime = false;
-                // Priority: VBlank, STAT, Timer, Serial, Joypad
-                u16 targetVector = 0;
-                u8 mask = 1;
-                u16[5] vectors = [0x0040, 0x0048, 0x0050, 0x0058, 0x0060];
+                immutable u16[5] vectors = [0x0040, 0x0048, 0x0050, 0x0058, 0x0060];
                 for (int i = 0; i < 5; i++) {
+                    u8 mask = cast(u8)(1 << i);
                     if (pending & mask) {
                         mmu.iflag &= ~mask;
-                        targetVector = vectors[i];
-                        break;
+                        push16(mmu, pc);
+                        pc = vectors[i];
+                        return 20; // 5 M-cycles
                     }
-                    mask <<= 1;
                 }
-
-                push16(mmu, pc);
-                pc = targetVector;
-                return 20; // 5 M-cycles = 20 T-cycles
             }
         }
 
-        if (halted) {
-            return 4; // 1 M-cycle while halted
-        }
+        if (halted) return 4;
 
         u8 opcode = fetch8(mmu);
         return execute(mmu, opcode);
@@ -140,6 +105,15 @@ struct CPU {
         u8 hi = mmu.read(sp);
         sp++;
         return cast(u16)((hi << 8) | lo);
+    }
+
+    private bool checkCond(u8 cc) const {
+        switch (cc) {
+            case 0:  return !flagZ; // NZ
+            case 1:  return flagZ;  // Z
+            case 2:  return !flagC; // NC
+            default: return flagC;  // C
+        }
     }
 
     // --- ALU Helpers ---
@@ -349,7 +323,7 @@ struct CPU {
             // NOP
             case 0x00: return 4;
 
-            // LD rr, nn
+            // 16-bit Loads
             case 0x01: bc = fetch16(mmu); return 12;
             case 0x11: de = fetch16(mmu); return 12;
             case 0x21: hl = fetch16(mmu); return 12;
@@ -358,14 +332,14 @@ struct CPU {
             // LD (rr), A
             case 0x02: mmu.write(bc, a); return 8;
             case 0x12: mmu.write(de, a); return 8;
-            case 0x22: mmu.write(hl, a); incHL(); return 8; // LD (HL+), A
-            case 0x32: mmu.write(hl, a); decHL(); return 8; // LD (HL-), A
+            case 0x22: mmu.write(hl, a); hl++; return 8; // LD (HL+), A
+            case 0x32: mmu.write(hl, a); hl--; return 8; // LD (HL-), A
 
             // LD A, (rr)
             case 0x0A: a = mmu.read(bc); return 8;
             case 0x1A: a = mmu.read(de); return 8;
-            case 0x2A: a = mmu.read(hl); incHL(); return 8; // LD A, (HL+)
-            case 0x3A: a = mmu.read(hl); decHL(); return 8; // LD A, (HL-)
+            case 0x2A: a = mmu.read(hl); hl++; return 8; // LD A, (HL+)
+            case 0x3A: a = mmu.read(hl); hl--; return 8; // LD A, (HL-)
 
             // LD (nn), SP
             case 0x08: {
@@ -375,16 +349,14 @@ struct CPU {
                 return 20;
             }
 
-            // INC rr
-            case 0x03: incBC(); return 8;
-            case 0x13: incDE(); return 8;
-            case 0x23: incHL(); return 8;
+            // 16-bit INC/DEC
+            case 0x03: bc++; return 8;
+            case 0x13: de++; return 8;
+            case 0x23: hl++; return 8;
             case 0x33: sp++; return 8;
-
-            // DEC rr
-            case 0x0B: decBC(); return 8;
-            case 0x1B: decDE(); return 8;
-            case 0x2B: decHL(); return 8;
+            case 0x0B: bc--; return 8;
+            case 0x1B: de--; return 8;
+            case 0x2B: hl--; return 8;
             case 0x3B: sp--; return 8;
 
             // ADD HL, rr
@@ -393,63 +365,32 @@ struct CPU {
             case 0x29: aluAddHL(hl); return 8;
             case 0x39: aluAddHL(sp); return 8;
 
-            // INC r
-            case 0x04: b = aluInc(b); return 4;
-            case 0x14: d = aluInc(d); return 4;
-            case 0x24: h = aluInc(h); return 4;
-            case 0x34: mmu.write(hl, aluInc(mmu.read(hl))); return 12;
-            case 0x0C: c = aluInc(c); return 4;
-            case 0x1C: e = aluInc(e); return 4;
-            case 0x2C: l = aluInc(l); return 4;
-            case 0x3C: a = aluInc(a); return 4;
+            // 8-bit INC r / (HL)
+            case 0x04: case 0x0C: case 0x14: case 0x1C: case 0x24: case 0x2C: case 0x34: case 0x3C: {
+                u8 r = (opcode >> 3) & 7;
+                setReg8(mmu, r, aluInc(getReg8(mmu, r)));
+                return r == 6 ? 12 : 4;
+            }
 
-            // DEC r
-            case 0x05: b = aluDec(b); return 4;
-            case 0x15: d = aluDec(d); return 4;
-            case 0x25: h = aluDec(h); return 4;
-            case 0x35: mmu.write(hl, aluDec(mmu.read(hl))); return 12;
-            case 0x0D: c = aluDec(c); return 4;
-            case 0x1D: e = aluDec(e); return 4;
-            case 0x2D: l = aluDec(l); return 4;
-            case 0x3D: a = aluDec(a); return 4;
+            // 8-bit DEC r / (HL)
+            case 0x05: case 0x0D: case 0x15: case 0x1D: case 0x25: case 0x2D: case 0x35: case 0x3D: {
+                u8 r = (opcode >> 3) & 7;
+                setReg8(mmu, r, aluDec(getReg8(mmu, r)));
+                return r == 6 ? 12 : 4;
+            }
 
             // LD r, n
-            case 0x06: b = fetch8(mmu); return 8;
-            case 0x16: d = fetch8(mmu); return 8;
-            case 0x26: h = fetch8(mmu); return 8;
-            case 0x36: mmu.write(hl, fetch8(mmu)); return 12;
-            case 0x0E: c = fetch8(mmu); return 8;
-            case 0x1E: e = fetch8(mmu); return 8;
-            case 0x2E: l = fetch8(mmu); return 8;
-            case 0x3E: a = fetch8(mmu); return 8;
+            case 0x06: case 0x0E: case 0x16: case 0x1E: case 0x26: case 0x2E: case 0x36: case 0x3E: {
+                u8 r = (opcode >> 3) & 7;
+                setReg8(mmu, r, fetch8(mmu));
+                return r == 6 ? 12 : 8;
+            }
 
-            // Rotates of A
-            case 0x07: { // RLCA
-                u8 cOut = (a & 0x80) != 0 ? 1 : 0;
-                a = cast(u8)((a << 1) | cOut);
-                flagZ = false; flagN = false; flagH = false; flagC = (cOut != 0);
-                return 4;
-            }
-            case 0x0F: { // RRCA
-                u8 cOut = (a & 0x01) != 0 ? 1 : 0;
-                a = cast(u8)((a >> 1) | (cOut << 7));
-                flagZ = false; flagN = false; flagH = false; flagC = (cOut != 0);
-                return 4;
-            }
-            case 0x17: { // RLA
-                u8 oldC = flagC ? 1 : 0;
-                u8 cOut = (a & 0x80) != 0 ? 1 : 0;
-                a = cast(u8)((a << 1) | oldC);
-                flagZ = false; flagN = false; flagH = false; flagC = (cOut != 0);
-                return 4;
-            }
-            case 0x1F: { // RRA
-                u8 oldC = flagC ? 1 : 0;
-                u8 cOut = (a & 0x01) != 0 ? 1 : 0;
-                a = cast(u8)((a >> 1) | (oldC << 7));
-                flagZ = false; flagN = false; flagH = false; flagC = (cOut != 0);
-                return 4;
-            }
+            // Rotates of A (flag Z is 0 on DMG)
+            case 0x07: a = aluRlc(a); flagZ = false; return 4; // RLCA
+            case 0x0F: a = aluRrc(a); flagZ = false; return 4; // RRCA
+            case 0x17: a = aluRl(a);  flagZ = false; return 4; // RLA
+            case 0x1F: a = aluRr(a);  flagZ = false; return 4; // RRA
 
             // JR e
             case 0x18: {
@@ -457,24 +398,14 @@ struct CPU {
                 pc = cast(u16)(pc + offset);
                 return 12;
             }
-            case 0x20: { // JR NZ, e
+
+            // JR cc, e
+            case 0x20: case 0x28: case 0x30: case 0x38: {
                 i8 offset = cast(i8)fetch8(mmu);
-                if (!flagZ) { pc = cast(u16)(pc + offset); return 12; }
-                return 8;
-            }
-            case 0x28: { // JR Z, e
-                i8 offset = cast(i8)fetch8(mmu);
-                if (flagZ) { pc = cast(u16)(pc + offset); return 12; }
-                return 8;
-            }
-            case 0x30: { // JR NC, e
-                i8 offset = cast(i8)fetch8(mmu);
-                if (!flagC) { pc = cast(u16)(pc + offset); return 12; }
-                return 8;
-            }
-            case 0x38: { // JR C, e
-                i8 offset = cast(i8)fetch8(mmu);
-                if (flagC) { pc = cast(u16)(pc + offset); return 12; }
+                if (checkCond((opcode >> 3) & 3)) {
+                    pc = cast(u16)(pc + offset);
+                    return 12;
+                }
                 return 8;
             }
 
@@ -486,15 +417,14 @@ struct CPU {
 
             // HALT, STOP
             case 0x76: halted = true; return 4;
-            case 0x10: fetch8(mmu); return 4; // STOP 0
+            case 0x10: fetch8(mmu); return 4;
 
-            // 8-bit loads: LD r, r' (0x40 - 0x7F except 0x76 HALT)
+            // LD r, r' (0x40 - 0x7F except 0x76 HALT)
             case 0x40: .. case 0x75:
             case 0x77: .. case 0x7F: {
                 u8 dst = (opcode >> 3) & 7;
                 u8 src = opcode & 7;
-                u8 val = getReg8(mmu, src);
-                setReg8(mmu, dst, val);
+                setReg8(mmu, dst, getReg8(mmu, src));
                 return (dst == 6 || src == 6) ? 8 : 4;
             }
 
@@ -519,34 +449,25 @@ struct CPU {
             case 0xFE: aluCp(fetch8(mmu)); return 8;
 
             // RET cc
-            case 0xC0: if (!flagZ) { pc = pop16(mmu); return 20; } return 8;
-            case 0xC8: if (flagZ)  { pc = pop16(mmu); return 20; } return 8;
-            case 0xD0: if (!flagC) { pc = pop16(mmu); return 20; } return 8;
-            case 0xD8: if (flagC)  { pc = pop16(mmu); return 20; } return 8;
+            case 0xC0: case 0xC8: case 0xD0: case 0xD8: {
+                if (checkCond((opcode >> 3) & 3)) {
+                    pc = pop16(mmu);
+                    return 20;
+                }
+                return 8;
+            }
 
             // RET / RETI
             case 0xC9: pc = pop16(mmu); return 16;
             case 0xD9: pc = pop16(mmu); ime = true; return 16;
 
             // JP cc, nn
-            case 0xC2: {
+            case 0xC2: case 0xCA: case 0xD2: case 0xDA: {
                 u16 dest = fetch16(mmu);
-                if (!flagZ) { pc = dest; return 16; }
-                return 12;
-            }
-            case 0xCA: {
-                u16 dest = fetch16(mmu);
-                if (flagZ) { pc = dest; return 16; }
-                return 12;
-            }
-            case 0xD2: {
-                u16 dest = fetch16(mmu);
-                if (!flagC) { pc = dest; return 16; }
-                return 12;
-            }
-            case 0xDA: {
-                u16 dest = fetch16(mmu);
-                if (flagC) { pc = dest; return 16; }
+                if (checkCond((opcode >> 3) & 3)) {
+                    pc = dest;
+                    return 16;
+                }
                 return 12;
             }
 
@@ -555,24 +476,13 @@ struct CPU {
             case 0xE9: pc = hl; return 4;
 
             // CALL cc, nn
-            case 0xC4: {
+            case 0xC4: case 0xCC: case 0xD4: case 0xDC: {
                 u16 dest = fetch16(mmu);
-                if (!flagZ) { push16(mmu, pc); pc = dest; return 24; }
-                return 12;
-            }
-            case 0xCC: {
-                u16 dest = fetch16(mmu);
-                if (flagZ) { push16(mmu, pc); pc = dest; return 24; }
-                return 12;
-            }
-            case 0xD4: {
-                u16 dest = fetch16(mmu);
-                if (!flagC) { push16(mmu, pc); pc = dest; return 24; }
-                return 12;
-            }
-            case 0xDC: {
-                u16 dest = fetch16(mmu);
-                if (flagC) { push16(mmu, pc); pc = dest; return 24; }
+                if (checkCond((opcode >> 3) & 3)) {
+                    push16(mmu, pc);
+                    pc = dest;
+                    return 24;
+                }
                 return 12;
             }
 
@@ -585,14 +495,11 @@ struct CPU {
             }
 
             // RST n
-            case 0xC7: push16(mmu, pc); pc = 0x0000; return 16;
-            case 0xCF: push16(mmu, pc); pc = 0x0008; return 16;
-            case 0xD7: push16(mmu, pc); pc = 0x0010; return 16;
-            case 0xDF: push16(mmu, pc); pc = 0x0018; return 16;
-            case 0xE7: push16(mmu, pc); pc = 0x0020; return 16;
-            case 0xEF: push16(mmu, pc); pc = 0x0028; return 16;
-            case 0xF7: push16(mmu, pc); pc = 0x0030; return 16;
-            case 0xFF: push16(mmu, pc); pc = 0x0038; return 16;
+            case 0xC7: case 0xCF: case 0xD7: case 0xDF:
+            case 0xE7: case 0xEF: case 0xF7: case 0xFF:
+                push16(mmu, pc);
+                pc = cast(u16)(opcode & 0x38);
+                return 16;
 
             // POP rr
             case 0xC1: bc = pop16(mmu); return 12;
@@ -642,63 +549,118 @@ struct CPU {
             case 0xF9: sp = hl; return 8;
 
             // Interrupt Control
-            case 0xF3: ime = false; imeScheduled = false; return 4; // DI
-            case 0xFB: imeScheduled = true; return 4;               // EI
+            case 0xF3: ime = false; imeScheduled = false; return 4;
+            case 0xFB: imeScheduled = true; return 4;
 
             // CB-prefix
             case 0xCB: {
-                u8 cbOpcode = fetch8(mmu);
-                return executeCB(mmu, cbOpcode);
+                u8 cb = fetch8(mmu);
+                u8 reg = cb & 7;
+                u8 bit = (cb >> 3) & 7;
+                u8 group = cb >> 6;
+                uint cycles = (reg == 6) ? 16 : 8;
+
+                if (group == 1) { // BIT b, r
+                    u8 val = getReg8(mmu, reg);
+                    flagZ = (val & (1 << bit)) == 0;
+                    flagN = false;
+                    flagH = true;
+                    return (reg == 6) ? 12 : 8;
+                } else if (group == 2) { // RES b, r
+                    setReg8(mmu, reg, cast(u8)(getReg8(mmu, reg) & ~(1 << bit)));
+                    return cycles;
+                } else if (group == 3) { // SET b, r
+                    setReg8(mmu, reg, cast(u8)(getReg8(mmu, reg) | (1 << bit)));
+                    return cycles;
+                } else { // Rotates and shifts (group 0)
+                    u8 val = getReg8(mmu, reg);
+                    u8 res;
+                    switch (bit) {
+                        case 0: res = aluRlc(val); break;
+                        case 1: res = aluRrc(val); break;
+                        case 2: res = aluRl(val); break;
+                        case 3: res = aluRr(val); break;
+                        case 4: res = aluSla(val); break;
+                        case 5: res = aluSra(val); break;
+                        case 6: res = aluSwap(val); break;
+                        default: res = aluSrl(val); break;
+                    }
+                    setReg8(mmu, reg, res);
+                    return cycles;
+                }
             }
 
             default:
-                // Unmapped opcode
                 return 4;
         }
     }
+}
 
-    private uint executeCB(ref MMU mmu, u8 cbOpcode) {
-        u8 regIdx = cbOpcode & 7;
-        u8 bitIdx = (cbOpcode >> 3) & 7;
-        u8 group  = cbOpcode >> 6;
+unittest {
+    CPU cpu;
+    MMU mmu;
+    cpu.reset();
+    mmu.reset();
 
-        uint cycles = (regIdx == 6) ? 16 : 8;
+    // Initial register states
+    assert(cpu.af == 0x01B0);
+    assert(cpu.bc == 0x0013);
+    assert(cpu.de == 0x00D8);
+    assert(cpu.hl == 0x014D);
+    assert(cpu.sp == 0xFFFE);
+    assert(cpu.pc == 0x0100);
 
-        if (group == 1) {
-            // BIT b, r
-            u8 val = getReg8(mmu, regIdx);
-            flagZ = (val & (1 << bitIdx)) == 0;
-            flagN = false;
-            flagH = true;
-            return (regIdx == 6) ? 12 : 8;
-        } else if (group == 2) {
-            // RES b, r
-            u8 val = getReg8(mmu, regIdx);
-            val &= ~(1 << bitIdx);
-            setReg8(mmu, regIdx, val);
-            return cycles;
-        } else if (group == 3) {
-            // SET b, r
-            u8 val = getReg8(mmu, regIdx);
-            val |= (1 << bitIdx);
-            setReg8(mmu, regIdx, val);
-            return cycles;
-        } else {
-            // Rotates and shifts (group 0)
-            u8 val = getReg8(mmu, regIdx);
-            u8 res;
-            switch (bitIdx) {
-                case 0: res = aluRlc(val); break;
-                case 1: res = aluRrc(val); break;
-                case 2: res = aluRl(val); break;
-                case 3: res = aluRr(val); break;
-                case 4: res = aluSla(val); break;
-                case 5: res = aluSra(val); break;
-                case 6: res = aluSwap(val); break;
-                default: res = aluSrl(val); break;
-            }
-            setReg8(mmu, regIdx, res);
-            return cycles;
-        }
-    }
+    // Register unions: 16-bit and 8-bit synchronicity
+    cpu.hl = 0x1234;
+    assert(cpu.h == 0x12 && cpu.l == 0x34);
+    cpu.hl++;
+    assert(cpu.hl == 0x1235);
+    cpu.hl--;
+    assert(cpu.hl == 0x1234);
+
+    // Flags
+    cpu.flagZ = true;
+    assert(cpu.flagZ && (cpu.f & FLAG_Z));
+    cpu.flagZ = false;
+    assert(!cpu.flagZ);
+
+    // Test ALU: ADD A, n and SUB n in RAM
+    mmu.wram[0] = 0x3E; mmu.wram[1] = 0x0F; // LD A, 0x0F
+    mmu.wram[2] = 0xC6; mmu.wram[3] = 0x01; // ADD A, 0x01
+    mmu.wram[4] = 0xD6; mmu.wram[5] = 0x10; // SUB 0x10
+    cpu.pc = 0xC000;
+
+    cpu.step(mmu);
+    assert(cpu.a == 0x0F);
+    cpu.step(mmu);
+    assert(cpu.a == 0x10);
+    assert(cpu.flagH && !cpu.flagZ && !cpu.flagC);
+    cpu.step(mmu);
+    assert(cpu.a == 0x00);
+    assert(cpu.flagZ && cpu.flagN);
+
+    // Test CB: SWAP, BIT, SET, RES
+    mmu.wram[6] = 0x3E; mmu.wram[7] = 0xA5; // LD A, 0xA5
+    mmu.wram[8] = 0xCB; mmu.wram[9] = 0x37; // SWAP A
+    mmu.wram[10] = 0xCB; mmu.wram[11] = 0x5F; // BIT 3, A
+    mmu.wram[12] = 0xCB; mmu.wram[13] = 0x57; // BIT 2, A
+    mmu.wram[14] = 0xCB; mmu.wram[15] = 0xD7; // SET 2, A
+    mmu.wram[16] = 0xCB; mmu.wram[17] = 0x97; // RES 2, A
+    cpu.pc = 0xC006;
+
+    cpu.step(mmu);
+    assert(cpu.a == 0xA5);
+    cpu.step(mmu);
+    assert(cpu.a == 0x5A); // SWAP
+    cpu.step(mmu);
+    assert(!cpu.flagZ); // BIT 3 of 0x5A is 1
+    cpu.step(mmu);
+    assert(cpu.flagZ);  // BIT 2 of 0x5A is 0
+    cpu.step(mmu);
+    assert(cpu.a == 0x5E); // SET 2
+    cpu.step(mmu);
+    assert(cpu.a == 0x5A); // RES 2
+
+    import core.stdc.stdio : printf;
+    printf("✔ [CPU] Unittests passed.\n");
 }

@@ -15,12 +15,12 @@ struct MMU {
     u8 iflag = 0xE1;    // 0xFF0F Interrupt Flag
     u8 ie    = 0x00;    // 0xFFFF Interrupt Enable
 
-    // Joypad state
-    u8 joypSelect = 0x30; // 0xFF00 select bits (bits 4 and 5)
-    u8 joypadButtons = 0xFF; // Active low: bits: Down, Up, Left, Right
-    u8 joypadActions = 0xFF; // Active low: bits: Start, Select, B, A
+    // Joypad state (0xFF00)
+    u8 joypSelect = 0x30;
+    u8 joypadButtons = 0xFF; // Down, Up, Left, Right (active low)
+    u8 joypadActions = 0xFF; // Start, Select, B, A (active low)
 
-    // Serial transfer
+    // Serial
     u8 sb = 0x00;       // 0xFF01
     u8 sc = 0x7E;       // 0xFF02
 
@@ -28,8 +28,8 @@ struct MMU {
     Timer timer;
 
     void reset() {
-        foreach (ref b; wram) b = 0;
-        foreach (ref b; hram) b = 0;
+        wram[] = 0;
+        hram[] = 0;
         iflag = 0xE1;
         ie    = 0x00;
         joypSelect = 0x30;
@@ -46,8 +46,6 @@ struct MMU {
         romSize = rom.length;
     }
 
-    // Set joypad input from active-high button states:
-    // [right, left, up, down, a, b, select, start]
     void updateInput(bool right, bool left, bool up, bool down, bool a, bool b, bool select, bool start) {
         u8 dir = 0x0F;
         if (right) dir &= ~0x01;
@@ -65,83 +63,57 @@ struct MMU {
     }
 
     u8 read(u16 addr) const {
-        if (addr < 0x8000) {
-            // Cartridge ROM
-            if (romData !is null && addr < romSize) {
-                return romData[addr];
-            }
-            return 0xFF;
-        } else if (addr >= 0x8000 && addr <= 0x9FFF) {
-            // VRAM
+        if (addr < 0x8000) { // Cartridge ROM
+            return (romData !is null && addr < romSize) ? romData[addr] : 0xFF;
+        } else if (addr < 0xA000) { // VRAM
             return ppu.read(addr);
-        } else if (addr >= 0xA000 && addr <= 0xBFFF) {
-            // External RAM (unmapped for minimal ROMs)
+        } else if (addr < 0xC000) { // External RAM
             return 0xFF;
-        } else if (addr >= 0xC000 && addr <= 0xDFFF) {
-            // WRAM
+        } else if (addr < 0xE000) { // WRAM
             return wram[addr - 0xC000];
-        } else if (addr >= 0xE000 && addr <= 0xFDFF) {
-            // Echo RAM
+        } else if (addr < 0xFE00) { // Echo RAM
             return wram[addr - 0xE000];
-        } else if (addr >= 0xFE00 && addr <= 0xFE9F) {
-            // OAM
+        } else if (addr < 0xFEA0) { // OAM
             return ppu.read(addr);
-        } else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
-            // Not usable
+        } else if (addr < 0xFF00) { // Unusable
             return 0xFF;
-        } else if (addr == 0xFF00) {
-            // Joypad
+        } else if (addr == 0xFF00) { // Joypad
             u8 res = joypSelect | 0xCF;
-            if ((joypSelect & 0x10) == 0) {
-                res &= (joypadButtons | 0xF0);
-            }
-            if ((joypSelect & 0x20) == 0) {
-                res &= (joypadActions | 0xF0);
-            }
+            if (!(joypSelect & 0x10)) res &= (joypadButtons | 0xF0);
+            if (!(joypSelect & 0x20)) res &= (joypadActions | 0xF0);
             return res;
         } else if (addr == 0xFF01) {
             return sb;
         } else if (addr == 0xFF02) {
             return sc | 0x7E;
-        } else if (addr >= 0xFF04 && addr <= 0xFF07) {
-            // Timer
+        } else if (addr <= 0xFF07) {
             return timer.read(addr);
         } else if (addr == 0xFF0F) {
             return iflag | 0xE0;
-        } else if (addr >= 0xFF40 && addr <= 0xFF4B) {
-            // PPU registers
+        } else if (addr <= 0xFF4B) {
             return ppu.read(addr);
         } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
-            // HRAM
             return hram[addr - 0xFF80];
         } else if (addr == 0xFFFF) {
-            // IE
             return ie;
         }
-
         return 0xFF;
     }
 
     void write(u16 addr, u8 val) {
         if (addr < 0x8000) {
-            // ROM write (for MBC banking, ignore for simple 32KB ROM)
-            return;
-        } else if (addr >= 0x8000 && addr <= 0x9FFF) {
-            // VRAM
+            return; // ROM is read-only
+        } else if (addr < 0xA000) {
             ppu.write(addr, val);
-        } else if (addr >= 0xA000 && addr <= 0xBFFF) {
-            // External RAM
+        } else if (addr < 0xC000) {
             return;
-        } else if (addr >= 0xC000 && addr <= 0xDFFF) {
-            // WRAM
+        } else if (addr < 0xE000) {
             wram[addr - 0xC000] = val;
-        } else if (addr >= 0xE000 && addr <= 0xFDFF) {
-            // Echo RAM
-            wram[addr - 0xE000] = val;
-        } else if (addr >= 0xFE00 && addr <= 0xFE9F) {
-            // OAM
+        } else if (addr < 0xFE00) {
+            wram[addr - 0xE000] = val; // Echo RAM
+        } else if (addr < 0xFEA0) {
             ppu.write(addr, val);
-        } else if (addr >= 0xFEA0 && addr <= 0xFEFF) {
+        } else if (addr < 0xFF00) {
             return;
         } else if (addr == 0xFF00) {
             joypSelect = val & 0x30;
@@ -149,25 +121,22 @@ struct MMU {
             sb = val;
         } else if (addr == 0xFF02) {
             sc = val;
-            // If transfer requested with internal clock (debug output)
-            if (val == 0x81) {
-                // Serial debug output character
+            if (val == 0x81) { // Debug serial output
                 char[2] buf = [cast(char)sb, '\0'];
                 w4.trace(buf.ptr);
-                sc &= 0x7F; // Transfer completed
+                sc &= 0x7F;
                 iflag |= INT_SERIAL;
             }
-        } else if (addr >= 0xFF04 && addr <= 0xFF07) {
+        } else if (addr <= 0xFF07) {
             timer.write(addr, val);
         } else if (addr == 0xFF0F) {
             iflag = val;
-        } else if (addr >= 0xFF40 && addr <= 0xFF45 || (addr >= 0xFF47 && addr <= 0xFF4B)) {
+        } else if (addr <= 0xFF45 || (addr >= 0xFF47 && addr <= 0xFF4B)) {
             ppu.write(addr, val);
-        } else if (addr == 0xFF46) {
-            // OAM DMA Transfer: Copy 160 bytes from source xx00-xx9F to OAM FE00-FE9F
-            u16 srcBase = cast(u16)(val << 8);
+        } else if (addr == 0xFF46) { // OAM DMA
+            u16 src = cast(u16)(val << 8);
             for (u16 i = 0; i < 160; i++) {
-                ppu.oam[i] = read(cast(u16)(srcBase + i));
+                ppu.oam[i] = read(cast(u16)(src + i));
             }
         } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
             hram[addr - 0xFF80] = val;
@@ -175,4 +144,36 @@ struct MMU {
             ie = val;
         }
     }
+}
+
+unittest {
+    MMU mmu;
+    mmu.reset();
+
+    // WRAM read / write & Echo RAM
+    mmu.write(0xC050, 0x42);
+    assert(mmu.read(0xC050) == 0x42);
+    assert(mmu.read(0xE050) == 0x42); // Echo RAM
+
+    // HRAM
+    mmu.write(0xFF85, 0x99);
+    assert(mmu.read(0xFF85) == 0x99);
+
+    // Joypad: test D-Pad selection
+    mmu.updateInput(true, false, false, false, false, false, false, false); // Right pressed
+    mmu.write(0xFF00, 0x20); // Select D-pad (bit 4=0)
+    assert((mmu.read(0xFF00) & 0x01) == 0); // Bit 0 is 0 (pressed)
+    assert((mmu.read(0xFF00) & 0x02) != 0); // Bit 1 is 1 (not pressed)
+
+    // OAM DMA test: write data to WRAM, trigger DMA to OAM
+    for (u16 i = 0; i < 160; i++) {
+        mmu.write(cast(u16)(0xC100 + i), cast(u8)(i + 1));
+    }
+    mmu.write(0xFF46, 0xC1); // Trigger DMA from 0xC100
+    for (u16 i = 0; i < 160; i++) {
+        assert(mmu.ppu.oam[i] == cast(u8)(i + 1));
+    }
+
+    import core.stdc.stdio : printf;
+    printf("✔ [MMU] Unittests passed.\n");
 }
