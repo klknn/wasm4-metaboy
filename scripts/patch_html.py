@@ -18,7 +18,13 @@ def patch(html_path):
 
     # 2. Add ROM loader & drag-and-drop hook if not already added
     if 'loadRomData' not in content:
-        hook = '''<script>
+        hook = '''<div id="rom-bar" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;font-family:monospace;">
+    <input type="file" id="rom-picker" accept=".gb" style="display:none">
+    <button id="rom-btn" onclick="document.getElementById('rom-picker').click()" style="background:#1a1a24;color:#a0e0a0;border:2px solid #336644;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+        📁 Load ROM (.gb) / Drag & Drop
+    </button>
+</div>
+<script>
 window.addEventListener('DOMContentLoaded', () => {
     setTimeout(async () => {
         const app = document.querySelector('wasm4-app');
@@ -34,9 +40,24 @@ window.addEventListener('DOMContentLoaded', () => {
                 if (app.notifications) {
                     app.notifications.show('Loaded ' + (filename || 'ROM'));
                 }
+                const btn = document.getElementById('rom-btn');
+                if (btn) btn.innerText = '🎮 Playing: ' + (filename || 'ROM');
             }
         }
 
+        // File picker change event
+        const picker = document.getElementById('rom-picker');
+        if (picker) {
+            picker.addEventListener('change', async (e) => {
+                if (picker.files && picker.files.length > 0) {
+                    const file = picker.files[0];
+                    const buf = await file.arrayBuffer();
+                    await loadRomData(buf, file.name);
+                }
+            });
+        }
+
+        // Auto-fetch pokemon_red.gb if served locally
         try {
             const res = await fetch('pokemon_red.gb');
             if (res.ok) {
@@ -47,6 +68,7 @@ window.addEventListener('DOMContentLoaded', () => {
             // pokemon_red.gb not hosted, keep default ROM
         }
 
+        // Drag-and-drop any .gb file onto the page
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', async (e) => {
             e.preventDefault();

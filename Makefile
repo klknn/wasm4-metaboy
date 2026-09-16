@@ -13,6 +13,12 @@ bundle: build
 run: build
 	w4 run cart.wasm
 
+serve: bundle
+	@echo "Serving MetaBoy at http://localhost:8000 (Ctrl+C to stop)..."
+	python3 -m http.server 8000
+
+play: serve
+
 test:
 	ldc2 -i -I=source -unittest -main -run source/gb/gameboy.d
 
