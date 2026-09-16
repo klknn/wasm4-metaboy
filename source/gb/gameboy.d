@@ -1,3 +1,17 @@
+/**
+ * Game Boy System Coordinator
+ *
+ * Orchestrates the CPU, MMU, PPU, and Timer components to simulate real-time
+ * Game Boy execution at ~59.73 frames per second.
+ *
+ * Emulation Loop Architecture:
+ * - 1 Game Boy frame = 154 scanlines * 456 T-cycles = 70,224 T-cycles.
+ * - In each step of the frame loop:
+ *   1. CPU executes one instruction via `cpu.step(mmu)`, returning T-cycles consumed.
+ *   2. Timer steps forward by that many cycles; triggers Timer interrupt on overflow.
+ *   3. PPU steps forward by that many cycles, generating scanlines and STAT/VBlank interrupts.
+ *   4. Any generated interrupts are raised in MMU's IF register (0xFF0F).
+ */
 module gb.gameboy;
 
 import gb.types;
@@ -28,6 +42,9 @@ struct GameBoy {
         totalFrames = 0;
     }
 
+    /**
+     * Executes one complete frame (70,224 clock cycles) with input sampling.
+     */
     void stepFrame(ubyte gp1, ubyte gp2 = 0, ubyte mouse = 0) {
         bool btnA      = (gp1 & w4.button1) != 0;
         bool btnB      = (gp1 & w4.button2) != 0;
@@ -133,7 +150,7 @@ unittest {
         }
 
         assert(pokeGb.totalFrames == 180);
-        assert((pokeGb.mmu.ppu.lcdc & 0x80) != 0, "LCD should be enabled by Pokemon Red");
+        assert(pokeGb.mmu.ppu.lcdEnable, "LCD should be enabled by Pokemon Red");
         assert(pokeGb.cpu.pc >= 0x0100 && pokeGb.cpu.pc < 0x8000, "PC in valid ROM address range");
     }
 
