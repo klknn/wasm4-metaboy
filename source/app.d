@@ -1,3 +1,16 @@
+/**
+ * WASM-4 MetaBoy Game Boy Emulator - Main Application Entrypoint
+ *
+ * Architecture & Hardware Mapping:
+ * - Canvas: WASM-4 provides a 160x160 4-color framebuffer (6,400 bytes, 2bpp).
+ *   - Y=0..143:   Active Game Boy display area (160x144 pixels).
+ *   - Y=144..159: MetaBoy status bar displaying live PC (Program Counter) & SP (Stack Pointer).
+ * - Palette: Custom 4-color classic DMG green palette configured in start().
+ * - Linear Memory Allocation (with 2 MB extended WebAssembly memory):
+ *   - 0x00000 - 0x0FFFF: WASM-4 memory-mapped I/O, framebuffer, stack, and globals (64 KiB).
+ *   - 0x10000 - 0x8FFFF: Game Boy Cartridge ROM buffer (up to 512 KiB, e.g. Pokemon Red).
+ *   - 0x90000 - 0x97FFF: Game Boy Cartridge SRAM buffer (32 KiB, 4 banks of 8 KiB).
+ */
 module app;
 
 import w4 = wasm4;
@@ -6,6 +19,9 @@ import gb.gameboy;
 
 static GameBoy gameboy;
 
+/**
+ * Called once when the WASM-4 cartridge is initialized.
+ */
 extern(C) void start() {
     // Classic DMG Green Palette
     w4.palette[0] = 0xE0F8D0;
@@ -18,6 +34,9 @@ extern(C) void start() {
     w4.trace("MetaBoy Game Boy Emulator Initialized!\0".ptr);
 }
 
+/**
+ * Called at 60 Hz by WASM-4 runtime to update state and render a frame.
+ */
 extern(C) void update() {
     gameboy.stepFrame(*w4.gamepad1, *w4.gamepad2, *w4.mouseButtons);
 
