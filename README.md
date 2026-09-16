@@ -9,12 +9,14 @@ The emulator fits completely within WASM-4's strict **64 KB** linear memory and 
 ## Architecture
 
 - **CPU (`source/gb/cpu.d`)**: Complete Sharp SM83 (LR35902) instruction set:
+  - Registers implemented cleanly with `std.bitmanip.bitfields` for flags and 16-bit register pairs
   - 8-bit & 16-bit loads, arithmetic, and logic (including `DAA`)
   - Jumps, calls, returns, stack operations, and flag calculation (`Z`, `N`, `H`, `C`)
   - Full CB-prefix instruction table (all 256 instructions: bit manipulation, rotates, and shifts)
   - Interrupt handling with priority vectors (`VBlank`, `STAT`, `Timer`, `Serial`, `Joypad`)
-- **MMU (`source/gb/mmu.d`)**: Game Boy memory bus mapping:
-  - Cartridge ROM (0x0000 - 0x7FFF)
+- **MMU (`source/gb/mmu.d`)**: Game Boy memory bus & MBC1 banking:
+  - Cartridge ROM Banking (MBC1, supporting up to 2MB ROM, 16KB banked at 0x0000..0x3FFF and 0x4000..0x7FFF)
+  - Cartridge RAM Banking (MBC1, 4 banks of 8KB at 0xA000..0xBFFF, RAM enable/disable)
   - VRAM (0x8000 - 0x9FFF, 8 KB)
   - Work RAM (0xC000 - 0xDFFF, 8 KB) + Echo RAM (0xE000 - 0xFDFF)
   - OAM (0xFE00 - 0xFE9F, 160 bytes)
@@ -42,11 +44,19 @@ The emulator fits completely within WASM-4's strict **64 KB** linear memory and 
 
 ## Controls
 
-| Game Boy | WASM-4 Gamepad | Keyboard |
+| Game Boy | WASM-4 Gamepad | Keyboard / Mouse |
 |---|---|---|
 | D-Pad | D-Pad (Up, Down, Left, Right) | Arrow Keys |
-| Button A | Button 1 | `X` |
-| Button B | Button 2 | `Z` |
+| Button A | Gamepad 1 Button 1 | `X`, `V`, `Space` |
+| Button B | Gamepad 1 Button 2 | `Z`, `C` |
+| Select | Gamepad 2 Button 1 | `A`, `Q`, or Right Click |
+| Start | Gamepad 2 Button 2 | `Shift`, `Tab`, Left Click, or `X`+`Z` |
+
+## Loading Commercial / Custom ROMs
+
+MetaBoy supports commercial MBC1 cartridges (e.g. Pokémon Red, Super Mario Land) and ROM-only games (Tetris, Flappy Boy, etc.):
+- **Drag & Drop**: Simply drag and drop any `.gb` file onto the browser window running `index.html`.
+- **Auto-Load**: If `pokemon_red.gb` is present in the web root, `index.html` loads it automatically at startup.
 
 ## Building & Running
 

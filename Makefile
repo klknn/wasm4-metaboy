@@ -8,6 +8,7 @@ build:
 
 bundle: build
 	w4 bundle cart.wasm --html index.html --title "WASM-4 MetaBoy Game Boy Emulator"
+	python3 scripts/patch_html.py index.html
 
 run: build
 	w4 run cart.wasm
