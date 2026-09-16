@@ -4,7 +4,11 @@ A Game Boy (DMG) emulator written in the **D language** targeting the **WASM-4**
 
 The emulator fits completely within WASM-4's strict **64 KB** linear memory and **64 KB** cartridge size limits, while emulating the Sharp SM83 CPU at 60 FPS (4.19 MHz / 70,224 cycles per frame).
 
-![MetaBoy Screenshot](screenshot.png)
+<p align="center">
+  <img src="screenshot.png" alt="MetaBoy Debug ROM" width="200" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="screenshot_pokemon.png" alt="Pokemon Red on MetaBoy" width="200" />
+</p>
 
 ## Architecture
 
