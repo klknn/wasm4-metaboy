@@ -1,0 +1,5 @@
+/cart.wasm
+/.dub
+/tests/test_emulator
+*.o
+*.ppm

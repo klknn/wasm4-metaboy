@@ -1,0 +1,91 @@
+# WASM-4 MetaBoy
+
+A Game Boy (DMG) emulator written in the **D language** targeting the **WASM-4** fantasy console (WebAssembly).
+
+The emulator fits completely within WASM-4's strict **64 KB** linear memory and **64 KB** cartridge size limits, while emulating the Sharp SM83 CPU at 60 FPS (4.19 MHz / 70,224 cycles per frame).
+
+![MetaBoy Screenshot](screenshot.png)
+
+## Architecture
+
+- **CPU (`source/gb/cpu.d`)**: Complete Sharp SM83 (LR35902) instruction set:
+  - 8-bit & 16-bit loads, arithmetic, and logic (including `DAA`)
+  - Jumps, calls, returns, stack operations, and flag calculation (`Z`, `N`, `H`, `C`)
+  - Full CB-prefix instruction table (all 256 instructions: bit manipulation, rotates, and shifts)
+  - Interrupt handling with priority vectors (`VBlank`, `STAT`, `Timer`, `Serial`, `Joypad`)
+- **MMU (`source/gb/mmu.d`)**: Game Boy memory bus mapping:
+  - Cartridge ROM (0x0000 - 0x7FFF)
+  - VRAM (0x8000 - 0x9FFF, 8 KB)
+  - Work RAM (0xC000 - 0xDFFF, 8 KB) + Echo RAM (0xE000 - 0xFDFF)
+  - OAM (0xFE00 - 0xFE9F, 160 bytes)
+  - High RAM (0xFF80 - 0xFFFE, 127 bytes)
+  - Hardware I/O registers (Joypad, Timer, PPU, Serial debug output, OAM DMA)
+- **PPU (`source/gb/ppu.d`)**:
+  - Scanline-accurate rendering (154 scanlines, Mode 2 OAM -> Mode 3 Transfer -> Mode 0 HBlank -> Mode 1 VBlank)
+  - Background tilemap (32x32) with unsigned/signed tile addressing
+  - Window layer display
+  - Sprites (OBJ) with priority and flipping
+  - Direct 2bpp blitter to WASM-4's 160x160 framebuffer at address `0x00A0`
+- **Timer (`source/gb/timer.d`)**:
+  - Cycle-accurate divider (`DIV` at 0xFF04) and programmable timer (`TIMA`, `TMA`, `TAC`)
+- **Built-in Debug ROM (`source/gb/rom.d`)**:
+  - A custom SM83 machine-code debug program that tests:
+    - Stack pointer setup & interrupts
+    - Palette configuration (`BGP`, `OBP0`, `OBP1`)
+    - VRAM tile loading (custom 8x8 font and sprite patterns)
+    - Tilemap population at 0x9800
+    - OAM sprite attribute setup
+    - Real-time Joypad polling:
+      - **D-Pad**: Moves the smiley face sprite in real time
+      - **Button X** (GB Button A): Scrolls the background horizontally (`SCX`)
+      - **Button Z** (GB Button B): Scrolls the background vertically (`SCY`)
+
+## Controls
+
+| Game Boy | WASM-4 Gamepad | Keyboard |
+|---|---|---|
+| D-Pad | D-Pad (Up, Down, Left, Right) | Arrow Keys |
+| Button A | Button 1 | `X` |
+| Button B | Button 2 | `Z` |
+
+## Building & Running
+
+### Prerequisites
+
+- [LDC](https://github.com/ldc-developers/ldc) (LLVM D Compiler) with WebAssembly target support
+- [WASM-4 CLI](https://wasm4.org) (`npm install -g wasm4` or `w4`)
+
+### Build Cartridge
+
+```shell
+make build
+# or dub build --arch wasm32-unknown-unknown-wasm --build release
+```
+
+This compiles `cart.wasm` (approx. 37 KB).
+
+### Run in WASM-4
+
+```shell
+make run
+# or w4 run cart.wasm
+```
+
+### Bundle to Standalone HTML
+
+```shell
+make bundle
+# or w4 bundle cart.wasm --html index.html
+```
+
+You can open the generated `index.html` in any modern web browser to play immediately.
+
+### Run Native Test Suite
+
+Run the unit tests natively on your host machine:
+
+```shell
+make test
+```
+
+Verifies CPU registers, ALU operations, CB bitwise instructions, PPU timing, and debug ROM execution.

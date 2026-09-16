@@ -1,0 +1,19 @@
+DUB_FLAGS = --quiet --arch wasm32-unknown-unknown-wasm --build release
+ifneq ($(origin WASI_SDK_PATH), undefined)
+	override DUB_FLAGS += --config wasi
+endif
+
+build:
+	dub build ${DUB_FLAGS}
+
+bundle: build
+	w4 bundle cart.wasm --html index.html --title "WASM-4 MetaBoy Game Boy Emulator"
+
+run: build
+	w4 run cart.wasm
+
+test:
+	ldc2 -I=source source/gb/types.d source/gb/timer.d source/gb/ppu.d source/gb/mmu.d source/gb/cpu.d source/gb/rom.d source/gb/gameboy.d source/wasm4.d tests/test_emulator.d -of=tests/test_emulator && ./tests/test_emulator
+
+clean:
+	rm -rf cart.wasm .dub tests/test_emulator tests/*.o screenshot.ppm
