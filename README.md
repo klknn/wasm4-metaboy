@@ -38,7 +38,7 @@ The emulator fits completely within WASM-4's strict **64 KB** linear memory and 
   - Direct 2bpp blitter to WASM-4's 160x160 framebuffer at address `0x00A0`
 - **Timer (`source/gb/timer.d`)**:
   - Cycle-accurate divider (`DIV` at 0xFF04) and programmable timer (`TIMA`, `TMA`, `TAC`)
-- **APU (`source/gb/apu.d`)**:
+- **APU (`source/gb/apu.d`)**: (See [APU Architecture & Sound Engine](docs/apu.md))
   - 4-channel Game Boy sound synthesis mapped to WASM-4's `w4.tone()` audio engine:
     - **Channel 1 (Pulse 1)**: Square wave with 4 duty cycles (12.5%, 25%, 50%, 75%), frequency sweep, and volume envelope
     - **Channel 2 (Pulse 2)**: Square wave with volume envelope
