@@ -18,10 +18,16 @@ def patch(html_path):
 
     # 2. Add ROM loader & drag-and-drop hook if not already added
     if 'loadRomData' not in content:
-        hook = '''<div id="rom-bar" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;font-family:monospace;">
+        hook = '''<div id="rom-bar" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;font-family:monospace;display:flex;gap:8px;align-items:center;">
     <input type="file" id="rom-picker" accept=".gb" style="display:none">
     <button id="rom-btn" onclick="document.getElementById('rom-picker').click()" style="background:#1a1a24;color:#a0e0a0;border:2px solid #336644;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);">
-        📁 Load ROM (.gb) / Drag & Drop
+        📁 Load ROM / Drop
+    </button>
+    <button id="flappy-btn" onclick="window.loadPresetRom('flappyboy')" style="background:#1a1a24;color:#f0c040;border:2px solid #886622;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+        🐦 Play FlappyBoy
+    </button>
+    <button id="tobu-btn" onclick="window.loadPresetRom('tobutobugirl')" style="background:#1a1a24;color:#60c0f0;border:2px solid #226688;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+        🐱 Play Tobu Tobu Girl
     </button>
 </div>
 <script>
@@ -29,6 +35,13 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(async () => {
         const app = document.querySelector('wasm4-app');
         if (!app || !app.runtime) return;
+
+        const ONLINE_ROMS = {
+            'flappyboy': 'https://raw.githubusercontent.com/bitnenfer/flappy-boy-asm/master/build/flappyboy.gb',
+            'flappy': 'https://raw.githubusercontent.com/bitnenfer/flappy-boy-asm/master/build/flappyboy.gb',
+            'tobutobugirl': 'https://raw.githubusercontent.com/torch2424/wasmboy/master/demo/wasmerboy/tobutobugirl/tobutobugirl.gb',
+            'tobu': 'https://raw.githubusercontent.com/torch2424/wasmboy/master/demo/wasmerboy/tobutobugirl/tobutobugirl.gb'
+        };
 
         async function loadRomData(buffer, filename) {
             const romBytes = new Uint8Array(buffer);
@@ -41,9 +54,26 @@ window.addEventListener('DOMContentLoaded', () => {
                     app.notifications.show('Loaded ' + (filename || 'ROM'));
                 }
                 const btn = document.getElementById('rom-btn');
-                if (btn) btn.innerText = '🎮 Playing: ' + (filename || 'ROM');
+                if (btn) btn.innerText = '🎮 ' + (filename || 'ROM');
             }
         }
+
+        async function fetchAndLoad(url, name) {
+            const resolvedUrl = ONLINE_ROMS[url.toLowerCase()] || url;
+            const displayName = name || resolvedUrl.split('/').pop();
+            const btn = document.getElementById('rom-btn');
+            if (btn) btn.innerText = '⏳ Loading ' + displayName + '...';
+            try {
+                const res = await fetch(resolvedUrl);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const buf = await res.arrayBuffer();
+                await loadRomData(buf, displayName);
+            } catch(err) {
+                console.error('Failed to load ROM from', resolvedUrl, err);
+                if (btn) btn.innerText = '⚠️ Failed to load ROM';
+            }
+        }
+        window.loadPresetRom = (preset) => fetchAndLoad(preset, preset + '.gb');
 
         // File picker change event
         const picker = document.getElementById('rom-picker');
@@ -57,19 +87,23 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Auto-fetch ROM (URL query ?rom=..., or pokemon_red.gb, or super_mario_land.gb)
+        // Auto-fetch ROM (URL query ?rom=..., or local pokemon_red.gb / super_mario_land.gb)
         const urlParams = new URLSearchParams(window.location.search);
         const queryRom = urlParams.get('rom');
-        const romCandidates = queryRom ? [queryRom] : ['pokemon_red.gb', 'super_mario_land.gb'];
-        for (const romName of romCandidates) {
-            try {
-                const res = await fetch(romName);
-                if (res.ok) {
-                    const buf = await res.arrayBuffer();
-                    await loadRomData(buf, romName);
-                    break;
-                }
-            } catch(e) {}
+        if (queryRom) {
+            await fetchAndLoad(queryRom, queryRom.split('/').pop());
+        } else {
+            const localCandidates = ['pokemon_red.gb', 'super_mario_land.gb'];
+            for (const romName of localCandidates) {
+                try {
+                    const res = await fetch(romName);
+                    if (res.ok) {
+                        const buf = await res.arrayBuffer();
+                        await loadRomData(buf, romName);
+                        break;
+                    }
+                } catch(e) {}
+            }
         }
 
         // Drag-and-drop any .gb file onto the page
