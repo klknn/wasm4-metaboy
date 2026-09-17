@@ -145,11 +145,24 @@ version (WebAssembly) {
     void vline(int x, int y, uint len) {}
     void oval(int x, int y, uint width, uint height) {}
     void rect(int x, int y, uint width, uint height) {}
-    void text(const char* text, int x, int y) {}
-    void tone(uint frequency, uint duration, uint volume, uint flags) {}
+    alias ToneHandler = void function(uint frequency, uint duration, uint volume, uint flags);
+    __gshared ToneHandler customToneHandler = null;
+
+    void tone(uint frequency, uint duration, uint volume, uint flags) {
+        if (customToneHandler !is null) {
+            customToneHandler(frequency, duration, volume, flags);
+        }
+    }
     uint diskr(void* dest, uint size) { return 0; }
     uint diskw(const void* src, uint size) { return 0; }
+    alias TraceHandler = void function(const char*);
+    __gshared TraceHandler customTraceHandler = null;
+
     void trace(const char* str) {
+        if (customTraceHandler !is null) {
+            customTraceHandler(str);
+            return;
+        }
         import core.stdc.stdio : printf;
         printf("%s\n", str);
     }

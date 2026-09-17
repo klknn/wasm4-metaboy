@@ -74,6 +74,7 @@ struct GameBoy {
             if (ppuInts != 0) mmu.iflag |= ppuInts;
         }
 
+        mmu.apu.updateFrame();
         totalFrames++;
     }
 }

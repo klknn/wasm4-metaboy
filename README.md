@@ -38,6 +38,13 @@ The emulator fits completely within WASM-4's strict **64 KB** linear memory and 
   - Direct 2bpp blitter to WASM-4's 160x160 framebuffer at address `0x00A0`
 - **Timer (`source/gb/timer.d`)**:
   - Cycle-accurate divider (`DIV` at 0xFF04) and programmable timer (`TIMA`, `TMA`, `TAC`)
+- **APU (`source/gb/apu.d`)**:
+  - 4-channel Game Boy sound synthesis mapped to WASM-4's `w4.tone()` audio engine:
+    - **Channel 1 (Pulse 1)**: Square wave with 4 duty cycles (12.5%, 25%, 50%, 75%), frequency sweep, and volume envelope
+    - **Channel 2 (Pulse 2)**: Square wave with volume envelope
+    - **Channel 3 (Wave)**: Custom waveform channel mapped to WASM-4 Triangle wave
+    - **Channel 4 (Noise)**: LFSR noise generator for drums, percussion, and sound effects
+    - **Master Controls (`NR50`, `NR51`, `NR52`)**: Stereo panning (left/right/center) and power management
 - **Built-in Debug ROM (`source/gb/rom.d`)**:
   - A custom SM83 machine-code debug program that tests:
     - Stack pointer setup & interrupts
@@ -116,3 +123,14 @@ make test
 ```
 
 Verifies CPU registers, ALU operations, CB bitwise instructions, PPU timing, and debug ROM execution.
+
+### Run Hardware Test ROMs (Blargg)
+
+MetaBoy includes automated validation using Shay Green's (Blargg) Game Boy hardware test suite from [retrio/gb-test-roms](https://github.com/retrio/gb-test-roms):
+
+```shell
+make test-blargg
+# or make test-all to run both unit tests and hardware ROM tests
+```
+
+This clones the test ROMs on demand into `tests/gb-test-roms/` and verifies all 11 CPU instruction tests plus instruction timing (100% pass rate: 12/12).

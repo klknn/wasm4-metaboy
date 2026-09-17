@@ -87,23 +87,14 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Auto-fetch ROM (URL query ?rom=..., or local pokemon_red.gb / super_mario_land.gb)
+        // Auto-fetch ROM: URL query ?rom=..., or default to FlappyBoy
         const urlParams = new URLSearchParams(window.location.search);
         const queryRom = urlParams.get('rom');
-        if (queryRom) {
+        if (queryRom && queryRom !== 'debug' && queryRom !== 'none') {
             await fetchAndLoad(queryRom, queryRom.split('/').pop());
-        } else {
-            const localCandidates = ['pokemon_red.gb', 'super_mario_land.gb'];
-            for (const romName of localCandidates) {
-                try {
-                    const res = await fetch(romName);
-                    if (res.ok) {
-                        const buf = await res.arrayBuffer();
-                        await loadRomData(buf, romName);
-                        break;
-                    }
-                } catch(e) {}
-            }
+        } else if (!queryRom) {
+            // Load FlappyBoy by default
+            await fetchAndLoad('flappyboy', 'FlappyBoy');
         }
 
         // Drag-and-drop any .gb file onto the page

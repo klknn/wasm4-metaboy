@@ -22,5 +22,20 @@ play: serve
 test:
 	ldc2 -i -I=source -unittest -main -run source/gb/gameboy.d
 
+TEST_ROMS_DIR = tests/gb-test-roms
+TEST_ROMS_REPO = https://github.com/retrio/gb-test-roms.git
+
+test-blargg:
+	@if [ ! -d "$(TEST_ROMS_DIR)" ]; then \
+		echo "Cloning $(TEST_ROMS_REPO) into $(TEST_ROMS_DIR)..."; \
+		git clone --depth 1 $(TEST_ROMS_REPO) $(TEST_ROMS_DIR); \
+	fi
+	ldc2 -i -I=source -run tests/run_blargg.d $(TEST_ROMS_DIR)
+
+test-roms: test-blargg
+
+test-all: test test-blargg
+
 clean:
-	rm -rf cart.wasm .dub screenshot.ppm
+	rm -rf cart.wasm .dub screenshot.ppm tests/gb-test-roms
+

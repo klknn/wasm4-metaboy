@@ -35,6 +35,7 @@ module gb.mmu;
 import gb.types;
 import gb.ppu;
 import gb.timer;
+import gb.apu;
 import std.bitmanip : bitfields;
 import w4 = wasm4;
 
@@ -93,6 +94,7 @@ struct MMU {
 
     PPU   ppu;
     Timer timer;
+    APU   apu;
 
     void reset() {
         wram[] = 0;
@@ -106,6 +108,7 @@ struct MMU {
         sc = 0x7E;
         ppu.reset();
         timer.reset();
+        apu.reset();
         resetCart();
     }
 
@@ -207,6 +210,8 @@ struct MMU {
             return timer.read(addr);
         } else if (addr == 0xFF0F) {
             return iflag | 0xE0;
+        } else if (addr >= 0xFF10 && addr <= 0xFF3F) {
+            return apu.read(addr);
         } else if (addr <= 0xFF4B) {
             return ppu.read(addr);
         } else if (addr >= 0xFF80 && addr <= 0xFFFE) {
@@ -259,8 +264,8 @@ struct MMU {
             sb = val;
         } else if (addr == 0xFF02) {
             sc = val;
-            if (val & 0x80) { // Serial transfer requested
-                if (sb >= 32 && sb < 127) {
+            if ((val & 0x81) == 0x81) { // Serial transfer requested with internal clock (master)
+                if ((sb >= 32 && sb < 127) || sb == 10) {
                     char[2] buf = [cast(char)sb, '\0'];
                     w4.trace(buf.ptr);
                 }
@@ -271,6 +276,8 @@ struct MMU {
             timer.write(addr, val);
         } else if (addr == 0xFF0F) {
             iflag = val;
+        } else if (addr >= 0xFF10 && addr <= 0xFF3F) {
+            apu.write(addr, val);
         } else if (addr <= 0xFF45 || (addr >= 0xFF47 && addr <= 0xFF4B)) {
             ppu.write(addr, val);
         } else if (addr == 0xFF46) { // OAM DMA
