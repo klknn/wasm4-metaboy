@@ -1,5 +1,7 @@
 # WASM-4 MetaBoy
 
+🎮 **Live Demo / Web Player:** [https://klknn.github.io/wasm4-metaboy/](https://klknn.github.io/wasm4-metaboy/)
+
 A Game Boy (DMG) emulator written in the **D language** targeting the **WASM-4** fantasy console (WebAssembly).
 
 The emulator fits completely within WASM-4's strict **64 KB** linear memory and **64 KB** cartridge size limits (compiling to just **~34.8 KB**), while emulating the Sharp SM83 CPU at 60 FPS (4.19 MHz / 70,224 cycles per frame). See [Binary Size Optimization](docs/binary_size_optimization.md) for how this was achieved.
