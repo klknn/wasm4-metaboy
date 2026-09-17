@@ -5,11 +5,11 @@ A Game Boy (DMG) emulator written in the **D language** targeting the **WASM-4**
 The emulator fits completely within WASM-4's strict **64 KB** linear memory and **64 KB** cartridge size limits (compiling to just **~34.8 KB**), while emulating the Sharp SM83 CPU at 60 FPS (4.19 MHz / 70,224 cycles per frame). See [Binary Size Optimization](docs/binary_size_optimization.md) for how this was achieved.
 
 <p align="center">
-  <img src="screenshot.png" alt="MetaBoy Debug ROM" width="180" />
+  <img src="docs/screenshot.png" alt="MetaBoy Debug ROM" width="180" />
   &nbsp;&nbsp;
-  <img src="screenshot_mario.png" alt="Super Mario Land on MetaBoy" width="180" />
+  <img src="docs/screenshot_mario.png" alt="Super Mario Land on MetaBoy" width="180" />
   &nbsp;&nbsp;
-  <img src="screenshot_pokemon.png" alt="Pokemon Red on MetaBoy" width="180" />
+  <img src="docs/screenshot_pokemon.png" alt="Pokemon Red on MetaBoy" width="180" />
 </p>
 
 ## Architecture
@@ -65,7 +65,7 @@ MetaBoy supports commercial MBC1 cartridges (e.g. Super Mario Land, Pokémon Red
 - **Auto-Load**: If `pokemon_red.gb` or `super_mario_land.gb` is placed alongside `index.html` (or specified via `?rom=my_game.gb`), `index.html` loads it automatically at startup.
 
 <p align="center">
-  <img src="screenshot_mario_gameplay.png" alt="Super Mario Land World 1-1 on MetaBoy" width="200" />
+  <img src="docs/screenshot_mario_gameplay.png" alt="Super Mario Land World 1-1 on MetaBoy" width="200" />
 </p>
 
 ## Building & Running
