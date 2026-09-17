@@ -154,6 +154,27 @@ unittest {
         assert(pokeGb.cpu.pc >= 0x0100 && pokeGb.cpu.pc < 0x8000, "PC in valid ROM address range");
     }
 
+    // Super Mario Land verification if ROM is present locally
+    if (exists("super_mario_land.gb")) {
+        const(ubyte)[] marioRom = cast(const(ubyte)[])read("super_mario_land.gb");
+        assert(marioRom.length == 65536, "Super Mario Land should be 64KB");
+
+        GameBoy marioGb;
+        marioGb.loadCustomRom(marioRom, null);
+
+        assert(marioGb.mmu.cartType == 0x01, "Cart type should be MBC1");
+        assert(marioGb.mmu.numRomBanks == 4, "Super Mario Land should have 4 ROM banks");
+
+        // Run 100 frames to reach title screen
+        for (int f = 0; f < 100; f++) {
+            marioGb.stepFrame(0);
+        }
+
+        assert(marioGb.totalFrames == 100);
+        assert(marioGb.mmu.ppu.lcdEnable, "LCD should be enabled by Super Mario Land");
+        assert(marioGb.cpu.pc >= 0x0100 && marioGb.cpu.pc < 0x8000, "PC in valid ROM address range");
+    }
+
     import core.stdc.stdio : printf;
     printf("✔ [GameBoy] Integration unittests passed.\n");
 }
