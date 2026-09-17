@@ -57,15 +57,19 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Auto-fetch pokemon_red.gb if served locally
-        try {
-            const res = await fetch('pokemon_red.gb');
-            if (res.ok) {
-                const buf = await res.arrayBuffer();
-                await loadRomData(buf, 'pokemon_red.gb');
-            }
-        } catch(e) {
-            // pokemon_red.gb not hosted, keep default ROM
+        // Auto-fetch ROM (URL query ?rom=..., or pokemon_red.gb, or super_mario_land.gb)
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryRom = urlParams.get('rom');
+        const romCandidates = queryRom ? [queryRom] : ['pokemon_red.gb', 'super_mario_land.gb'];
+        for (const romName of romCandidates) {
+            try {
+                const res = await fetch(romName);
+                if (res.ok) {
+                    const buf = await res.arrayBuffer();
+                    await loadRomData(buf, romName);
+                    break;
+                }
+            } catch(e) {}
         }
 
         // Drag-and-drop any .gb file onto the page
