@@ -69,14 +69,14 @@ The emulator fits completely within WASM-4's strict **64 KB** linear memory and 
 
 ## Loading Commercial / Custom ROMs
 
-MetaBoy supports commercial MBC1 cartridges (e.g. Super Mario Land, Pokémon Red) and ROM-only games (Tetris, Flappy Boy, etc.):
-- **One-Click Online Demos**: In the web player, click **Play FlappyBoy** or **Play Tobu Tobu Girl** to fetch legal, open-source homebrew games directly over HTTPS without storing ROMs in this repo!
+MetaBoy supports commercial MBC1 cartridges (e.g. Super Mario Land, Pokémon Red) and ROM-only games (Tetris, Tobu Tobu Girl, Flappy Boy, etc.):
+- **Instant Default Game**: The web player automatically loads Tangram Games' open-source homebrew [Tobu Tobu Girl](https://github.com/SimonLarsen/tobutobugirl) by default, featuring full 4-channel chiptune music by potato-tan!
+- **One-Click Presets**: Click **Play Tobu Tobu Girl** or **Play FlappyBoy** to switch games directly over HTTPS without storing copyrighted ROMs in this repo.
 - **URL Parameter (`?rom=...`)**: Load any CORS-enabled online `.gb` ROM via HTTPS query string:
-  - `?rom=flappyboy` (loads open-source [FlappyBoy](https://github.com/bitnenfer/flappy-boy-asm))
   - `?rom=tobutobugirl` (loads open-source [Tobu Tobu Girl](https://github.com/SimonLarsen/tobutobugirl))
+  - `?rom=flappyboy` (loads open-source [FlappyBoy](https://github.com/bitnenfer/flappy-boy-asm))
   - `?rom=https://your-host.com/tetris.gb` (loads your personal legal backup)
 - **Drag & Drop**: Simply drag and drop any `.gb` file onto the browser window running `index.html`.
-- **Auto-Load**: If `pokemon_red.gb` or `super_mario_land.gb` is placed alongside `index.html`, `index.html` loads it automatically at startup.
 
 <p align="center">
   <img src="docs/screenshot_mario_gameplay.png" alt="Super Mario Land World 1-1 on MetaBoy" width="200" />

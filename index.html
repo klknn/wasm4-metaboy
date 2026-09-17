@@ -138,14 +138,14 @@ window.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Auto-fetch ROM: URL query ?rom=..., or default to FlappyBoy
+        // Auto-fetch ROM: URL query ?rom=..., or default to Tobu Tobu Girl (with full sound & music)
         const urlParams = new URLSearchParams(window.location.search);
         const queryRom = urlParams.get('rom');
         if (queryRom && queryRom !== 'debug' && queryRom !== 'none') {
             await fetchAndLoad(queryRom, queryRom.split('/').pop());
         } else if (!queryRom) {
-            // Load FlappyBoy by default
-            await fetchAndLoad('flappyboy', 'FlappyBoy');
+            // Load Tobu Tobu Girl by default
+            await fetchAndLoad('tobutobugirl', 'Tobu Tobu Girl');
         }
 
         // Drag-and-drop any .gb file onto the page
